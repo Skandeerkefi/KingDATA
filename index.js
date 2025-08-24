@@ -1,4 +1,3 @@
-const functions = require("firebase-functions");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -18,7 +17,7 @@ const app = express();
 // CORS Middleware
 const allowedOrigins = [
 	"http://localhost:5173",
-	"https://king-eta-cyan.vercel.app/",
+	"https://mister-tee.vercel.app",
 	"misterteedata.railway.internal",
 	"https://mister-tee.vercel.app/Leaderboards",
 ];
@@ -137,6 +136,3 @@ app.get("/api/affiliates", async (req, res) => {
 app.get("/health", (req, res) =>
 	res.status(200).json({ status: "OK", message: "API is running" })
 );
-
-// Export as Cloud Function
-exports.api = functions.https.onRequest(app);
