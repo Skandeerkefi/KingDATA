@@ -5,14 +5,48 @@ const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const cron = require("node-cron");
-const { drawWinnerAuto } = require("./controllers/gwsController");
+const { drawWinnerAuto } = require("./controllers/gwsController"); // You create this
+dotenv.config();
 const GWS = require("./models/GWS");
 const fetch = (...args) =>
 	import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-dotenv.config();
-
 const app = express();
+const PORT = 3000;
+
+// Schedule job to run every minute
+cron.schedule("* * * * *", async () => {
+	console.log("Running giveaway auto-draw job...");
+	const now = new Date();
+
+	try {
+		const giveawaysToDraw = await GWS.find({
+			state: "active",
+			endTime: { $lte: now },
+		}).populate("participants");
+
+		for (const gws of giveawaysToDraw) {
+			await drawWinnerAuto(gws); // call the helper above
+			console.log(`Giveaway ${gws._id} winner drawn automatically.`);
+		}
+	} catch (err) {
+		console.error("Error during auto draw:", err);
+	}
+});
+
+// Logging Middleware
+app.use((req, res, next) => {
+	console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+	const originalSend = res.send;
+	res.send = function (body) {
+		console.log(
+			`[${new Date().toISOString()}] Response Headers:`,
+			res.getHeaders()
+		);
+		return originalSend.call(this, body);
+	};
+	next();
+});
 
 // CORS Middleware
 const allowedOrigins = [
@@ -25,9 +59,13 @@ const allowedOrigins = [
 app.use(
 	cors({
 		origin: function (origin, callback) {
+			// allow requests with no origin like curl or Postman
 			if (!origin) return callback(null, true);
-			if (allowedOrigins.includes(origin)) return callback(null, true);
-			callback(new Error("CORS policy: This origin is not allowed"));
+			if (allowedOrigins.includes(origin)) {
+				return callback(null, true);
+			} else {
+				return callback(new Error("CORS policy: This origin is not allowed"));
+			}
 		},
 		methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 		allowedHeaders: ["Content-Type", "Authorization"],
@@ -52,32 +90,14 @@ const { verifyToken, isAdmin } = require("./middleware/auth");
 
 // Routes
 const slotCallRoutes = require("./routes/slotCallRoutes");
-const gwsRoutes = require("./routes/gwsRoutes");
-const leaderboardRoutes = require("./routes/leaderboard");
-
-// Cron job (runs every minute)
-cron.schedule("* * * * *", async () => {
-	console.log("Running giveaway auto-draw job...");
-	const now = new Date();
-	try {
-		const giveawaysToDraw = await GWS.find({
-			state: "active",
-			endTime: { $lte: now },
-		}).populate("participants");
-		for (const gws of giveawaysToDraw) {
-			await drawWinnerAuto(gws);
-			console.log(`Giveaway ${gws._id} winner drawn automatically.`);
-		}
-	} catch (err) {
-		console.error("Error during auto draw:", err);
-	}
-});
 
 // Auth Routes
 app.post("/api/auth/register", async (req, res) => {
 	const { kickUsername, rainbetUsername, password, confirmPassword } = req.body;
-	if (password !== confirmPassword)
+
+	if (password !== confirmPassword) {
 		return res.status(400).json({ message: "Passwords do not match." });
+	}
 
 	const existing = await User.findOne({ kickUsername });
 	const existingRainbet = await User.findOne({ rainbetUsername });
@@ -87,11 +107,13 @@ app.post("/api/auth/register", async (req, res) => {
 	const hashed = await bcrypt.hash(password, 10);
 	const newUser = new User({ kickUsername, rainbetUsername, password: hashed });
 	await newUser.save();
+
 	res.status(201).json({ message: "User registered." });
 });
 
 app.post("/api/auth/login", async (req, res) => {
 	const { kickUsername, password } = req.body;
+
 	const user = await User.findOne({ kickUsername });
 	if (!user) return res.status(404).json({ message: "User not found." });
 
@@ -103,25 +125,28 @@ app.post("/api/auth/login", async (req, res) => {
 		process.env.JWT_SECRET,
 		{ expiresIn: "7d" }
 	);
+
 	res.json({
 		token,
 		user: { id: user._id, kickUsername: user.kickUsername, role: user.role },
 	});
 });
 
-// Other Routes
+// Slot Call Routes
 app.use("/api/slot-calls", slotCallRoutes);
-app.use("/api/gws", gwsRoutes);
-app.use("/api/leaderboard", leaderboardRoutes);
 
+// Affiliates Route
 app.get("/api/affiliates", async (req, res) => {
 	const { start_at, end_at } = req.query;
-	if (!start_at || !end_at)
+
+	if (!start_at || !end_at) {
 		return res
 			.status(400)
 			.json({ error: "Missing start_at or end_at parameter" });
+	}
 
 	const url = `https://services.rainbet.com/v1/external/affiliates?start_at=${start_at}&end_at=${end_at}&key=${process.env.RAINBET_API_KEY}`;
+
 	try {
 		const response = await fetch(url);
 		const content = await response.text();
@@ -132,7 +157,20 @@ app.get("/api/affiliates", async (req, res) => {
 	}
 });
 
-// Health check
-app.get("/health", (req, res) =>
-	res.status(200).json({ status: "OK", message: "API is running" })
+const gwsRoutes = require("./routes/gwsRoutes");
+app.use("/api/gws", gwsRoutes);
+
+// Start Server
+app.listen(PORT, () =>
+	console.log(`✅ Server is running at http://localhost:${PORT}`)
 );
+const leaderboardRoutes = require("./routes/leaderboard");
+// Routes
+app.use("/api/leaderboard", leaderboardRoutes);
+
+// Basic health check endpoint
+app.get("/health", (req, res) => {
+	res
+		.status(200)
+		.json({ status: "OK", message: "Roobet Leaderboard API is running" });
+});  
