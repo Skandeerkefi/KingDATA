@@ -52,7 +52,7 @@ app.use((req, res, next) => {
 const allowedOrigins = [
 	"http://localhost:5173",
 	"https://king-eta-cyan.vercel.app",
-	"misterteedata.railway.internal",
+	"https://kingrewardsroobet.vercel.app",
 	"https://mister-tee.vercel.app/Leaderboards",
 ];
 
