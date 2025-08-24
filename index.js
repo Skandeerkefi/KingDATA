@@ -51,7 +51,7 @@ app.use((req, res, next) => {
 // CORS Middleware
 const allowedOrigins = [
 	"http://localhost:5173",
-	"https://mister-tee.vercel.app",
+	"https://king-eta-cyan.vercel.app",
 	"misterteedata.railway.internal",
 	"https://mister-tee.vercel.app/Leaderboards",
 ];
@@ -173,4 +173,4 @@ app.get("/health", (req, res) => {
 	res
 		.status(200)
 		.json({ status: "OK", message: "Roobet Leaderboard API is running" });
-});  
+});
